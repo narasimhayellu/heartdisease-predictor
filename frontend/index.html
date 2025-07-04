@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart Disease Predictor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #764ba2;
+        }
+        
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result.low-risk {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+        
+        .result.high-risk {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+        
+        .probability {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🫀 Heart Disease Risk Predictor</h1>
+        
+        <form id="predictionForm">
+            <div id="formFields"></div>
+            
+            <button type="submit">Predict Risk</button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing...</p>
+        </div>
+        
+        <div class="result" id="result">
+            <h2 id="riskLevel"></h2>
+            <p id="riskMessage"></p>
+            <div class="probability" id="probability"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:5001';
+        
+        async function loadFormFields() {
+            try {
+                const response = await fetch(`${API_URL}/features`);
+                const features = await response.json();
+                
+                const formFields = document.getElementById('formFields');
+                
+                for (const [name, config] of Object.entries(features)) {
+                    const formGroup = document.createElement('div');
+                    formGroup.className = 'form-group';
+                    
+                    const label = document.createElement('label');
+                    label.textContent = config.label;
+                    label.setAttribute('for', name);
+                    formGroup.appendChild(label);
+                    
+                    if (config.type === 'number') {
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.id = name;
+                        input.name = name;
+                        input.required = true;
+                        input.min = config.min;
+                        input.max = config.max;
+                        if (config.step) input.step = config.step;
+                        formGroup.appendChild(input);
+                    } else if (config.type === 'select') {
+                        const select = document.createElement('select');
+                        select.id = name;
+                        select.name = name;
+                        select.required = true;
+                        
+                        config.options.forEach(option => {
+                            const optionEl = document.createElement('option');
+                            optionEl.value = option.value;
+                            optionEl.textContent = option.label;
+                            select.appendChild(optionEl);
+                        });
+                        
+                        formGroup.appendChild(select);
+                    }
+                    
+                    formFields.appendChild(formGroup);
+                }
+            } catch (error) {
+                console.error('Error loading form fields:', error);
+                alert('Failed to load form fields. Please refresh the page.');
+            }
+        }
+        
+        document.getElementById('predictionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = {};
+            
+            for (const [key, value] of formData.entries()) {
+                data[key] = parseFloat(value);
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').classList.remove('show');
+            
+            try {
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Prediction failed');
+                }
+                
+                const result = await response.json();
+                
+                const resultDiv = document.getElementById('result');
+                const riskLevel = document.getElementById('riskLevel');
+                const riskMessage = document.getElementById('riskMessage');
+                const probability = document.getElementById('probability');
+                
+                if (result.risk === 'High') {
+                    resultDiv.className = 'result high-risk';
+                    riskLevel.textContent = '⚠️ High Risk';
+                    riskMessage.textContent = 'Based on the provided data, there is an elevated risk of heart disease. Please consult with a healthcare professional.';
+                } else {
+                    resultDiv.className = 'result low-risk';
+                    riskLevel.textContent = '✅ Low Risk';
+                    riskMessage.textContent = 'Based on the provided data, the risk of heart disease appears to be low. Continue maintaining a healthy lifestyle!';
+                }
+                
+                probability.textContent = `Confidence: ${(result.probability.high_risk * 100).toFixed(1)}% risk`;
+                
+                resultDiv.classList.add('show');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to get prediction. Please try again.');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+        
+        loadFormFields();
+    </script>
+</body>
+</html>
